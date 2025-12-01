@@ -1,4 +1,4 @@
-(defun make-rgb ()
+(defparameter *rgb*
     #2A( ((255   0   0)   (  0 255   0)   (  0   0 255)   (255 255   0)   (255   0 255)   (  0 255 255)   (128 128 128)   ( 64  64  64)   (200  50  50)   ( 50 200  50)   ( 50  50 200)   (150 150  30)   ( 20  20  20)   (220 180  40)   ( 90  60 200)   ( 10 200 150)   (255 100   0)   (  0 100 255)   (100 255 100)   (100   0 100)   (100 100   0)   (  0 100 100)   (200 100 100))
          ((100 200 100)   (100 100 200)   (150  75  75)   ( 75 150  75)   ( 75  75 150)   (180 180 100)   ( 40  80 120)   (120  40  80)   ( 80 120  40)   (200 150 100)   (100 200 150)   (150 100 200)   (200 150 200)   (150 200 150)   ( 50 100 150)   (150  50 100)   (100 150  50)   (255 150   0)   (  0 150 255)   (150 255   0)   (  0 255 150)   (150   0 255)   (255 150 150))
          ((150 255 150)   (150 150 255)   (200 200 200)   (100 100 100)   ( 50  50  50)   (240 120  80)   ( 80 240 120)   (120  80 240)   (180 200  80)   ( 80 180 200)   (200  80 180)   (160 100 140)   (140 160 100)   (100 140 160)   (220  80  60)   ( 60 220  80)   ( 80  60 220)   (255 200  50)   ( 50 255 200)   (200  50 255)   (120 180 220)   (220 120 180)   (180 220 120))
@@ -24,6 +24,28 @@
          ((220 200 240)   (180 160 140)   (140 180 160)   (160 140 180)   (120 100  80)   ( 80 120 100)   (100  80 120)   (200 180 160)   (160 200 180)   (180 160 200)   (140 120 100)   (100 140 120)   (120 100 140)   (220 200 180)   (180 220 200)   (200 180 220)   (160 140 120)   (120 160 140)   (140 120 160)   (240 220 200)   (200 240 220)   (220 200 240)   (180 160 140))
          ((140 180 160)   (160 140 180)   (120 100  80)   ( 80 120 100)   (100  80 120)   (200 180 160)   (160 200 180)   (180 160 200)   (140 120 100)   (100 140 120)   (120 100 140)   (220 200 180)   (180 220 200)   (200 180 220)   (160 140 120)   (120 160 140)   (140 120 160)   (240 220 200)   (200 240 220)   (220 200 240)   (180 160 140)   (140 180 160)   (160 140 180))
         ))
+
+(defparameter *dct-array* 
+  #2A((52 55 61 66 70 61 64 73)
+     (63 59 55 90 109 85 69 72)
+     (62 59 68 113 144 104 66 73)
+     (63 58 71 122 154 106 70 69)
+     (67 61 68 104 126 88 68 70)
+     (79 65 60 70 77 68 58 75)
+     (85 71 64 59 55 61 65 83)
+     (87 79 69 68 65 76 78 94)))
+
+(defparameter *q-table*
+  #2A((16 11 10 16 24 40 51 61)
+      (12 12 14 19 26 58 60 55)
+      (14 13 16 24 40 57 69 56)
+      (14 17 22 29 51 87 80 62)
+      (18 22 37 56 68 109 103 77)
+      (24 35 55 64 81 104 113 92)
+      (49 64 78 87 103 121 120 101)
+      (72 92 95 98 112 100 103 99)))
+
+
 (defun rgb-to-ycbcr (rgb-array)
   (let* ((height (array-dimension rgb-array 0)) 
         (width (array-dimension rgb-array 1))
@@ -118,46 +140,118 @@
         (setf (aref out i j)
               (- (aref block i j) 128))))
     out))
-    
+
+(defun quantize-block (dct-block q-table)
+  (let ((out (make-array '(8 8))))
+    (dotimes (i 8)
+      (dotimes (j 8)
+        (setf (aref out i j)
+              (round (/ (aref dct-block i j)
+                        (aref q-table i j))))))
+    out))
+
+(defun zigzag-scan (block)
+  (let* ((zigzag-order
+           #(
+             (0 0) (0 1) (1 0) (2 0) (1 1) (0 2) (0 3) (1 2)
+             (2 1) (3 0) (4 0) (3 1) (2 2) (1 3) (0 4) (0 5)
+             (1 4) (2 3) (3 2) (4 1) (5 0) (6 0) (5 1) (4 2)
+             (3 3) (2 4) (1 5) (0 6) (0 7) (1 6) (2 5) (3 4)
+             (4 3) (5 2) (6 1) (7 0) (7 1) (6 2) (5 3) (4 4)
+             (3 5) (2 6) (1 7) (2 7) (3 6) (4 5) (5 4) (6 3)
+             (7 2) (7 3) (6 4) (5 5) (4 6) (3 7) (4 7) (5 6)
+             (6 5) (7 4) (7 5) (6 6) (5 7) (6 7) (7 6) (7 7)
+            ))
+         (result (make-array 64)))
+    (dotimes (i 64)
+      (let ((pos (aref zigzag-order i)))
+        (setf (aref result i)
+              (aref block (first pos) (second pos)))))
+    result))
+
+
 (defun jpeg-run (rgb)
   (multiple-value-bind (Y Cb Cr) 
-    (rgb-to-ycbcr rgb)
-    (format t "Преобразование в Cb")
+      (rgb-to-ycbcr rgb)
+
+    ;; Преобразование цветового пространства
+    (format t "~%Преобразование в Y:")
+    (print Y)
+    (format t "~%Преобразование в Cb:")
     (print Cb)
-    (format t "~%Преобразование в Cr")
+    (format t "~%Преобразование в Cr:")
     (print Cr)
+
+    ;; Субдискретизация цветности
     (let ((Cb-sub (subsample Cb))
           (Cr-sub (subsample Cr)))
-        (format t "~%Субдискретизация Cb") 
-        (print Cb-sub)
-        (format t "~%Субдискретизация Cr") 
-        (print Cr-sub)
-      (let* ((Cb-pad (padding Cb-sub))
-            (Cr-pad (padding Cr-sub))
-            (Cb-list (split-blocks Cb-pad))
-            (Cr-list (split-blocks Cr-pad)))
-          (format t "~%Дополненный Cb")   
-          (print Cb-pad)
-          (format t "~%Дополненный Cr")   
-          (print Cr-pad)
-          (format t "~%Список Cb") 
-          (print Cb-list)
-          (format t "~%Список Cr") 
-          (print Cr-list)
-          ))))
+      (format t "~%Субдискретизация Cb:")
+      (print Cb-sub)
+      (format t "~%Субдискретизация Cr:")
+      (print Cr-sub)
 
-(defun make-dct-array ()
-  #2A((52 55 61 66 70 61 64 73)
-     (63 59 55 90 109 85 69 72)
-     (62 59 68 113 144 104 66 73)
-     (63 58 71 122 154 106 70 69)
-     (67 61 68 104 126 88 68 70)
-     (79 65 60 70 77 68 58 75)
-     (85 71 64 59 55 61 65 83)
-     (87 79 69 68 65 76 78 94)))
+      ;; Дополнение
+      (let* ((Y-pad  (padding Y))
+             (Cb-pad (padding Cb-sub))
+             (Cr-pad (padding Cr-sub)))
+
+        (format t "~%Дополненная Y:")
+        (print Y-pad)
+        (format t "~%Дополненная Cb:")
+        (print Cb-pad)
+        (format t "~%Дополненная Cr:")
+        (print Cr-pad)
+
+        ;; Разбиение на блоки
+        (let* ((Y-blocks  (split-blocks Y-pad))
+               (Cb-blocks (split-blocks Cb-pad))
+               (Cr-blocks (split-blocks Cr-pad)))
+
+          (format t "~%Блоки Y:")
+          (print Y-blocks)
+          (format t "~%Блоки Cb:")
+          (print Cb-blocks)
+          (format t "~%Блоки Cr:")
+          (print Cr-blocks)
+
+          ; ДКП + квантование + зигзаг
+          (let ((Y-final  '())
+                (Cb-final '())
+                (Cr-final '()))
+
+            (dolist (b Y-blocks)
+              (push (zigzag-scan (quantize-block (dct b) *q-table*))
+                    Y-final))
+
+            (dolist (b Cb-blocks)
+              (push (zigzag-scan (quantize-block (dct b) *q-table*))
+                    Cb-final))
+
+            (dolist (b Cr-blocks)
+              (push (zigzag-scan (quantize-block (dct b) *q-table*))
+                    Cr-final))
+
+            (setf Y-final (reverse Y-final)
+                  Cb-final (reverse Cb-final)
+                  Cr-final (reverse Cr-final))
+
+            (format t "~%~%Блоки после ДКП + квантование + зигзаг~%")
+
+            (format t "~%Y (zig-zag):")
+            (print Y-final)
+
+            (format t "~%Cb (zig-zag):")
+            (print Cb-final)
+
+            (format t "~%Cr (zig-zag):")
+            (print Cr-final)
+
+            ))))))
+
+
 
 (defun dct-test (test-array)
     (print (dct test-array)))
     
-(dct-test (make-dct-array))
-;(jpeg-run (make-rgb))
+;(dct-test *dct-array*)
+(jpeg-run *rgb*)
