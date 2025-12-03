@@ -254,4 +254,78 @@
     (print (dct test-array)))
     
 ;(dct-test *dct-array*)
-(jpeg-run *rgb*)
+;(jpeg-run *rgb*)
+
+;; ТЕСТЫ
+
+(defun assert-equal (test-name actual expected)
+  (if (equalp actual expected)
+      (format t "[OK] ~A~%" test-name)
+      (format t "[FAIL] ~A~%  Expected: ~A~%  Actual:   ~A~%" 
+              test-name expected actual)))
+
+(defun run-tests ()
+  (format t "~%--- ЗАПУСК ТЕСТОВ ---~%~%")
+
+  ;; 1. Тест конвертации RGB to YCbCr
+  (multiple-value-bind (y cb cr) 
+      (rgb-to-ycbcr #2A(((123 200 98))))
+    (assert-equal "RGB to YCbCr (Y)" y  #2A((165)))
+    (assert-equal "RGB to YCbCr (Cb)" cb #2A((90)))
+    (assert-equal "RGB to YCbCr (Cr)" cr #2A((98))))
+
+    ;; 2. Тест Дополнение
+    (let ((input #2A((1 2) 
+                   (3 4)))
+        (expected (make-array '(8 8) :initial-element 4)))
+    (setf (aref expected 0 0) 1)
+    (setf (aref expected 0 1) 2)
+    (setf (aref expected 1 0) 3)
+    (setf (aref expected 1 1) 4)
+    (loop for j from 2 below 8 do (setf (aref expected 0 j) 2))
+    (loop for j from 2 below 8 do (setf (aref expected 1 j) 4))
+    (loop for i from 2 below 8 do (setf (aref expected i 0) 3))
+    (assert-equal "Padding" (padding input) expected))
+
+    ;; 3. Тест Субдискретизация
+  (let ((input #2A((10 10 20 40)
+                   (10 10 20 40)
+                   (100 200 0 0)
+                   (100 200 0 0)))
+        (expected #2A((10 30)
+                      (150 0))))
+    (assert-equal "Subsampl" (subsample input) expected))
+
+  ;; 4. Тест ДКП
+ (let ((flat-block (make-array '(8 8) :initial-element 128))
+        (expected-zeros (make-array '(8 8) :initial-element 0)))
+    (assert-equal "DCT" (dct flat-block) expected-zeros)) 
+
+  ;; 5. Тест Квантование
+  (let ((dct-block (make-array '(8 8) :initial-element 100))
+        (q-tbl     (make-array '(8 8) :initial-element 10))
+        (expected  (make-array '(8 8) :initial-element 10)))
+    (assert-equal "Quantization" 
+                  (quantize-block dct-block q-tbl) 
+                  expected))
+
+  (let ((block (make-array '(8 8) :initial-element 0))
+        (expected (make-array 64 :initial-element 0)))
+    
+    (setf (aref block 0 0) 10) 
+    (setf (aref block 0 1) 20)  
+    (setf (aref block 1 0) 30) 
+    (setf (aref block 7 7) 99) 
+    
+    (setf (aref expected 0) 10)
+    (setf (aref expected 1) 20)
+    (setf (aref expected 2) 30)
+    (setf (aref expected 63) 99)
+
+    (assert-equal "ZigZag" (zigzag-scan block) expected))
+    
+  (format t "~%--- ТЕСТЫ ЗАВЕРШЕНЫ ---~%"))
+
+(run-tests)
+
+
